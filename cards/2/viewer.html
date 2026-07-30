@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dune Living Card — Leadership</title>
+<style>
+  body { margin:0; background:#000; overflow:hidden; }
+  #splash { position:fixed; inset:0; background:rgba(0,0,0,.92); display:flex; flex-direction:column;
+    align-items:center; justify-content:center; color:#e8d9a8; font-family:Georgia,serif; z-index:999;
+    text-align:center; padding:2rem; }
+  #splash h1 { font-size:1.5rem; margin:0 0 .5rem; letter-spacing:.05em; }
+  #splash p { opacity:.8; margin:0 0 1.5rem; font-size:.95rem; line-height:1.5; }
+  #splash button { background:#c98a3a; color:#111; border:none; border-radius:8px;
+    padding:.85rem 2rem; font-size:1rem; cursor:pointer; font-weight:600; }
+  #unmute-btn { position:fixed; bottom:1.5rem; left:50%; transform:translateX(-50%); z-index:100; background:#c98a3a;
+    color:#111; border:none; border-radius:999px; padding:.9rem 2rem;
+    font-size:1rem; font-weight:600; cursor:pointer; box-shadow:0 4px 12px rgba(0,0,0,.4); display:none; }
+  #fallback { display:none; position:fixed; inset:0; background:#111; color:#fff;
+    font-family:system-ui,sans-serif; align-items:center; justify-content:center;
+    flex-direction:column; text-align:center; padding:2rem; }
+  #fallback h2 { color:#e8d9a8; }
+</style>
+</head><body>
+
+<div id="splash">
+  <h1>From the sands of Arrakis</h1>
+  <p>Point your camera at the printed card.<br>Allow camera access when prompted.</p>
+  <button id="start-btn">Begin</button>
+</div>
+<button id="unmute-btn" id="unmute-btn">Tap for sound</button>
+<div id="fallback"><h2>Camera not available</h2><p>Open on a phone and allow camera access.</p></div>
+
+<script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+
+<script>
+// Sand-burst component: particles spill off card at t≈6.5s and t≈28s
+AFRAME.registerComponent('sand-burst', {
+  init: function () {
+    const THREE = AFRAME.THREE;
+    this.video = document.getElementById('card-video');
+    this.group = new THREE.Group();
+    this.el.object3D.add(this.group);
+    this.particles = [];
+    const N = 70;
+    const geo = new THREE.PlaneGeometry(0.04, 0.04);
+    for (let i = 0; i < N; i++) {
+      const mat = new THREE.MeshBasicMaterial({
+        color: new THREE.Color().setHSL(0.09 + Math.random() * 0.05, 0.55, 0.50 + Math.random() * 0.2),
+        transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide
+      });
+      const m = new THREE.Mesh(geo, mat);
+      m.visible = false;
+      m.userData = { vx:0, vy:0, vz:0, spin:0, life:0 };
+      this.group.add(m);
+      this.particles.push(m);
+    }
+    this.burst1Spawned = false;
+    this.burst2Spawned = false;
+  },
+
+  _spawn: function () {
+    for (const p of this.particles) {
+      p.visible = true;
+      p.material.opacity = 0.95;
+      const ang = Math.random() * Math.PI * 2;
+      const speed = 0.6 + Math.random() * 1.0;
+      p.position.set((Math.random() - 0.5) * 0.3, (Math.random() - 0.5) * 0.2, 0.01);
+      p.userData.vx = Math.cos(ang) * speed * 0.4;
+      p.userData.vy = 0.8 + Math.random() * 1.4;
+      p.userData.vz = 0.15 + Math.sin(ang) * speed * 0.25;
+      p.userData.spin = (Math.random() - 0.5) * 10;
+      p.userData.life = 0;
+    }
+  },
+
+  tick: function (time, dt) {
+    if (!this.video) return;
+    const t = this.video.currentTime;
+    const step = Math.min(dt / 1000, 0.05);
+
+    // Burst 1: card text/words dissolve and blow off at t≈6.5s
+    if (t >= 6.3 && t < 6.55 && !this.burst1Spawned) {
+      this.burst1Spawned = true;
+      this._spawn();
+    }
+    if (t < 6.2 || t > 9.0) this.burst1Spawned = false;
+
+    // Burst 2: sandstorm spills off card at t≈28s (end loop)
+    if (t >= 27.8 && t < 28.1 && !this.burst2Spawned) {
+      this.burst2Spawned = true;
+      this._spawn();
+    }
+    if (t < 27.5 || t > 30.0) this.burst2Spawned = false;
+
+    // Integrate
+    for (const p of this.particles) {
+      if (!p.visible) continue;
+      p.userData.life += step;
+      p.userData.vy -= 3.5 * step;
+      p.position.x += p.userData.vx * step;
+      p.position.y += p.userData.vy * step;
+      p.position.z += p.userData.vz * step;
+      p.rotation.z += p.userData.spin * step;
+      p.material.opacity = Math.max(0, 0.95 - p.userData.life * 0.65);
+      if (p.userData.life > 1.8) { p.visible = false; }
+    }
+  }
+});
+
+document.getElementById('start-btn').addEventListener('click', function () {
+  document.getElementById('splash').style.display = 'none';
+  startAR();
+});
+
+function startAR() {
+  // Check camera availability
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    document.getElementById('fallback').style.display = 'flex';
+    return;
+  }
+
+  const scene = document.createElement('a-scene');
+  scene.setAttribute('mindar-image', 'imageTargetSrc: ../2/target.mind; autoStart: true; uiLoading: no; uiError: no; uiScanning: no; filterMinCF: 0.0001; filterBeta: 0.005; warmupTolerance: 3; missTolerance: 8;');
+  scene.setAttribute('color-space', 'sRGB');
+  scene.setAttribute('renderer', 'colorManagement: true; physicallyCorrectLights: true;');
+  scene.setAttribute('vr-mode-ui', 'enabled: false');
+  scene.setAttribute('device-orientation-permission-ui', 'enabled: false');
+
+  // Video asset
+  const assets = document.createElement('a-assets');
+  const video = document.createElement('video');
+  video.id = 'card-video';
+  video.src = '../2/animation.mp4';
+  video.setAttribute('preload', 'auto');
+  video.setAttribute('playsinline', '');
+  video.setAttribute('webkit-playsinline', '');
+  video.muted = true;
+  video.loop = false;
+  assets.appendChild(video);
+  scene.appendChild(assets);
+
+  // Camera
+  const cam = document.createElement('a-camera');
+  cam.setAttribute('position', '0 0 0');
+  cam.setAttribute('look-controls', 'enabled: false');
+  scene.appendChild(cam);
+
+  // MindAR target entity
+  const target = document.createElement('a-entity');
+  target.setAttribute('mindar-image-target', 'targetIndex: 0');
+
+  // 2D video plane (3:4 aspect = width 1, height 1.333)
+  const plane = document.createElement('a-plane');
+  plane.setAttribute('width', '1');
+  plane.setAttribute('height', '1.333');
+  plane.setAttribute('position', '0 0 0');
+  plane.setAttribute('material', 'src: #card-video; shader: flat; side: double;');
+  plane.setAttribute('sand-burst', '');
+  target.appendChild(plane);
+  scene.appendChild(target);
+  document.body.appendChild(scene);
+
+  // Play video on target found
+  scene.addEventListener('arReady', function () {
+    console.log('AR ready');
+  });
+
+  target.addEventListener('targetFound', function () {
+    video.muted = false;
+    video.currentTime = 0;
+    video.play().catch(() => {
+      video.muted = true;
+      video.play();
+      document.getElementById('unmute-btn').style.display = 'block';
+    });
+  });
+
+  target.addEventListener('targetLost', function () {
+    video.pause();
+  });
+
+  // Unmute button
+  document.getElementById('unmute-btn').addEventListener('click', function () {
+    video.muted = false;
+    this.style.display = 'none';
+  });
+
+  // Tap anywhere to toggle sound
+  document.addEventListener('click', function (e) {
+    if (e.target.tagName === 'BUTTON') return;
+    if (video.muted) {
+      video.muted = false;
+      document.getElementById('unmute-btn').style.display = 'none';
+    }
+  });
+}
+</script>
+</body></html>
