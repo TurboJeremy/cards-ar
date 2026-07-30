@@ -146,19 +146,20 @@ function startAR() {
   cam.setAttribute('look-controls', 'enabled: false');
   scene.appendChild(cam);
 
-  // MindAR target entity
-  const target = document.createElement('a-entity');
-  target.setAttribute('mindar-image-target', 'targetIndex: 0');
-
-  // 2D video plane (3:4 aspect = width 1, height 1.333)
-  const plane = document.createElement('a-plane');
-  plane.setAttribute('width', '1');
-  plane.setAttribute('height', '1.333');
-  plane.setAttribute('position', '0 0 0');
-  plane.setAttribute('material', 'src: #card-video; shader: flat; side: double;');
-  plane.setAttribute('sand-burst', '');
-  target.appendChild(plane);
-  scene.appendChild(target);
+  // MindAR target entities: index 0 = original print, index 1 = clean reprint
+  const targets = [0, 1].map(function (idx) {
+    const target = document.createElement('a-entity');
+    target.setAttribute('mindar-image-target', 'targetIndex: ' + idx);
+    const plane = document.createElement('a-plane');
+    plane.setAttribute('width', '1');
+    plane.setAttribute('height', '1.333');
+    plane.setAttribute('position', '0 0 0');
+    plane.setAttribute('material', 'src: #card-video; shader: flat; side: double;');
+    plane.setAttribute('sand-burst', '');
+    target.appendChild(plane);
+    scene.appendChild(target);
+    return target;
+  });
   document.body.appendChild(scene);
 
   // Play video on target found
@@ -166,18 +167,19 @@ function startAR() {
     console.log('AR ready');
   });
 
-  target.addEventListener('targetFound', function () {
-    video.muted = false;
-    video.currentTime = 0;
-    video.play().catch(() => {
-      video.muted = true;
-      video.play();
-      document.getElementById('unmute-btn').style.display = 'block';
+  targets.forEach(function (target) {
+    target.addEventListener('targetFound', function () {
+      video.muted = false;
+      video.currentTime = 0;
+      video.play().catch(() => {
+        video.muted = true;
+        video.play();
+        document.getElementById('unmute-btn').style.display = 'block';
+      });
     });
-  });
-
-  target.addEventListener('targetLost', function () {
-    video.pause();
+    target.addEventListener('targetLost', function () {
+      video.pause();
+    });
   });
 
   // Unmute button
